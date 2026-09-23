@@ -3,10 +3,8 @@ r"""
 一键安装工具
 ============
 静默安装 VC++ 运行库、Git、TortoiseGit、灵基,安装完成后自动克隆代码仓库
-(不内置 Git 账号密码: 拉取代码前弹出对话框,由使用者手动输入本次使用的
-内网 GitLab 账号密码,输入后账号密码自动嵌入仓库地址,克隆全程自动完成
-认证、不弹登录窗口;对话框中点「取消」则保持手动模式,由 Git 弹出登录
-窗口、由使用者自行输入)。
+(不在本工具中收集 Git 账号密码: 克隆需要认证时由 Git 弹出登录窗口,
+由使用者自行输入,本工具全程不接触、不记录账号密码)。
 
 本版本行为:
   * 不在任何磁盘位置记录日志文件(运行过程仅在界面内实时显示);
@@ -52,13 +50,9 @@ r"""
       只使用本工具安装目录下的 Git,不依赖系统 PATH 中的 git;
       仓库地址必须用 https: 服务器会把 http 301 重定向到 https,而认证
       信息无法跟随重定向传递,http 地址会导致自动认证失败、弹出登录窗口;
-      账号密码不再内置: 第一次真正需要克隆时弹出对话框,由使用者手动输入
-      本次要使用的 Git 账号密码,输入后以 URL 编码自动嵌入仓库地址
-      (如 user%40dom:P%40ss@host),git 直接携带认证信息完成克隆,全程不弹
-      登录窗口;在对话框中点「取消」则保持手动模式,需要认证时弹出登录
-      窗口,由用户自行输入。
-      输入的账号密码只在本次运行的内存中使用,不写入任何文件,日志中也
-      只显示账号名、不显示密码。
+      账号密码不由本工具收集: 克隆需要认证时由 Git 弹出登录窗口,由使用者
+      自行输入(Git 自带的凭据管理器会记住已输入的凭据,同一台机器上后续
+      克隆通常无需重复输入);本工具不接触、不记录任何账号密码。
 
 打包方式(见 打包exe.bat,四个安装包会被打进 exe):
   pyinstaller --onefile --noconsole --uac-admin --name "一键安装工具" ...
@@ -74,7 +68,6 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from urllib.parse import quote
 
 # ---------------------------------------------------------------------------
 # 安装任务定义。
@@ -136,26 +129,10 @@ CODE_FOLDER = "kingdeecode"
 RETRY_TIMES = 2
 
 # ---------------------------------------------------------------------------
-# Git 账号密码: 不再内置,拉取代码前由使用者在弹出的对话框中手动输入
-# (见 InstallerApp.ask_credentials);输入的账号密码只在本次运行时使用:
-#   * 已输入: 以 URL 编码嵌入仓库地址交给 git,克隆自动完成认证;
-#   * 点取消: 不嵌入账号密码,克隆时由 Git 弹出登录窗口自行登录。
-# 账号密码不写入任何文件,日志中只显示账号名、不显示密码。
+# Git 账号密码: 本工具不收集、不内置、不记录任何账号密码。
+# 克隆需要认证时由 Git 自行弹出登录窗口、由使用者输入,
+# 因此这里不需要任何凭据相关的常量与辅助函数。
 # ---------------------------------------------------------------------------
-
-def embed_credentials(url, user, password):
-    """把账号密码以 URL 编码嵌入仓库地址的 userinfo 部分:
-    https://host/path -> https://user:pass@host/path,
-    使 git clone 直接携带认证信息、自动完成认证(不弹登录窗口)。
-    账号密码中的 @ # ! 等特殊字符会编码为 %40 %23 %21,git 收到后会
-    自动解码再用于认证;地址本身已带账号密码时原样返回。"""
-    scheme, sep, rest = str(url).partition("://")
-    if not sep or "@" in rest.split("/", 1)[0]:
-        return url
-    cred = "{0}:{1}@".format(quote(str(user), safe=""),
-                             quote(str(password), safe=""))
-    return "{0}://{1}{2}".format(scheme, cred, rest)
-
 
 def ps_quote(text):
     """把文本包装成安全的 PowerShell 单引号字符串字面量。"""
@@ -266,7 +243,7 @@ class InstallerApp:
             text="软件将安装到子目录: git、TortoiseGit、lingdee"
                  "(VC++ 运行库为系统默认位置);\n"
                  "代码将克隆到子目录: kingdeecode;\n"
-                 "拉取代码前弹窗手动输入 Git 账号密码(不再内置账号密码);\n"
+                 "拉取代码需要认证时,由 Git 弹出登录窗口自行输入账号密码;\n"
                  "单个软件失败不影响后续安装与拉取代码。"
         ).pack(pady=(0, 2))
 
@@ -580,13 +557,12 @@ class InstallerApp:
                 return
             self.log("Git 版本: " + git_ver)
 
-            cred_tail = ("\n\nGit 版本: " + git_ver +
-                         "\n\n点「确定」后将弹出对话框,请手动输入您的 Git 账号密码"
-                         "(账号密码不再内置);\n"
-                         "对话框中点「取消」则由 Git 弹出登录窗口手动登录。")
+            clone_tail = ("\n\nGit 版本: " + git_ver +
+                          "\n\n克隆需要认证时,会由 Git 弹出登录窗口,"
+                          "请在窗口中输入您的 Git 账号密码。")
             self.root.after(0, lambda: messagebox.showinfo(
                 "安装结束",
-                msg + "\n\n即将开始拉取代码到:\n" + code_dir + cred_tail))
+                msg + "\n\n即将开始拉取代码到:\n" + code_dir + clone_tail))
             # 当前已在后台线程中,直接继续克隆仓库
             self.clone_all(code_dir, checked_repo_urls)
         except Exception as e:
@@ -625,104 +601,8 @@ class InstallerApp:
         return None
 
     # -----------------------------------------------------------------------
-    # 拉取代码前的 Git 账号密码输入(账号密码不再内置,由使用者现场手动输入)
-    # -----------------------------------------------------------------------
-    def ask_credentials(self):
-        """弹出对话框由使用者手动输入 Git 账号密码,返回 (账号, 密码);
-        点「取消」或直接关闭窗口时返回 (None, None),此时不嵌入账号密码,
-        克隆时由 Git 弹出登录窗口自行登录。
-        输入的账号密码只在本次运行的内存中使用,不写入任何文件。
-        本方法可在后台线程中调用(阻塞等待对话框关闭)。"""
-        result = {}
-        done = threading.Event()
-
-        def _show():
-            dlg = tk.Toplevel(self.root)
-            dlg.title("输入 Git 账号密码")
-            dlg.resizable(False, False)
-            dlg.transient(self.root)
-            frame = ttk.Frame(dlg, padding=16)
-            frame.pack(fill="both", expand=True)
-
-            ttk.Label(frame, text="拉取代码需要登录内网 GitLab,请手动输入您的账号密码:",
-                      font=("Microsoft YaHei UI", 10)).grid(
-                row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
-
-            user_var = tk.StringVar()
-            pwd_var = tk.StringVar()
-            ttk.Label(frame, text="Git 账号:").grid(
-                row=1, column=0, sticky="e", padx=(0, 8), pady=4)
-            user_entry = ttk.Entry(frame, textvariable=user_var, width=36)
-            user_entry.grid(row=1, column=1, pady=4)
-            ttk.Label(frame, text="Git 密码:").grid(
-                row=2, column=0, sticky="e", padx=(0, 8), pady=4)
-            pwd_entry = ttk.Entry(frame, textvariable=pwd_var, width=36,
-                                  show="*")
-            pwd_entry.grid(row=2, column=1, pady=4)
-
-            show_var = tk.BooleanVar(value=False)
-
-            def _toggle_show():
-                pwd_entry.configure(show="" if show_var.get() else "*")
-
-            ttk.Checkbutton(frame, text="显示密码", variable=show_var,
-                            command=_toggle_show).grid(
-                row=3, column=1, sticky="w", pady=(2, 0))
-
-            def _ok(_event=None):
-                user = user_var.get().strip()
-                pwd = pwd_var.get()
-                if not user or not pwd:
-                    messagebox.showwarning(
-                        "提示",
-                        "请同时输入 Git 账号和密码;\n"
-                        "如需在 Git 登录窗口中手动登录,请点「取消」。",
-                        parent=dlg)
-                    return
-                result["user"], result["password"] = user, pwd
-                dlg.destroy()
-
-            def _cancel(_event=None):
-                result["user"] = result["password"] = None
-                dlg.destroy()
-
-            # 按钮布局: 取消靠左、确定靠右(与 Windows 习惯一致)
-            btn_row = ttk.Frame(frame)
-            btn_row.grid(row=4, column=0, columnspan=2, sticky="ew",
-                         pady=(16, 0))
-            ttk.Button(btn_row, text="取消(由 Git 窗口手动登录)",
-                       command=_cancel).pack(side="left", padx=6)
-            ttk.Button(btn_row, text="确定", command=_ok).pack(
-                side="right", padx=6)
-
-            dlg.protocol("WM_DELETE_WINDOW", _cancel)
-            dlg.bind("<Return>", _ok)
-            dlg.bind("<Escape>", _cancel)
-            # 居中显示在主窗口上方
-            dlg.update_idletasks()
-            x = (self.root.winfo_rootx()
-                 + (self.root.winfo_width() - dlg.winfo_width()) // 2)
-            y = (self.root.winfo_rooty()
-                 + (self.root.winfo_height() - dlg.winfo_height()) // 3)
-            dlg.geometry("+%d+%d" % (max(x, 0), max(y, 0)))
-            try:
-                dlg.grab_set()      # 模态: 未关闭对话框前不能操作主界面
-            except Exception:
-                pass
-            user_entry.focus_set()
-            self.root.wait_window(dlg)
-            done.set()
-
-        try:
-            self.root.after(0, _show)
-        except Exception as e:
-            self.log("弹出 Git 账号密码输入窗口失败: %s" % e)
-            return None, None
-        done.wait()     # 等待对话框关闭(后台线程阻塞,界面仍可响应)
-        return result.get("user"), result.get("password")
-
-    # -----------------------------------------------------------------------
-    # 代码仓库拉取流程(安装完成后自动执行;账号密码由使用者现场手动输入)
+    # 代码仓库拉取流程(安装完成后自动执行;
+    # 需要认证时由 Git 弹出登录窗口,由使用者自行输入账号密码)
     # -----------------------------------------------------------------------
     def clone_all(self, code_dir, checked_repo_urls):
         """逐个克隆勾选的仓库:在可见的 Windows PowerShell 窗口中调用本工具安装的
@@ -731,10 +611,8 @@ class InstallerApp:
         目标目录为 Windows 绝对路径(如 C:/kingdee/kingdeecode/cmssc),
         cmbas、cmssc 各自克隆到 kingdeecode 下自己的子目录;
         只使用本工具安装目录下的 Git,不依赖系统 PATH 中的 git;
-        账号密码不再内置: 第一个需要克隆的仓库克隆前弹出对话框,由使用者
-        手动输入 Git 账号密码,输入后账号密码以 URL 编码嵌入仓库地址,
-        克隆全程自动完成认证、不弹登录窗口;对话框中点「取消」则保持手动
-        模式,克隆时弹出登录窗口由使用者自行输入。
+        账号密码不由本工具收集: 克隆需要认证时由 Git 弹出登录窗口,
+        由使用者自行输入。
         每个仓库克隆失败后自动重试两次: 每次重试清理残留目录后重新打开
         新的命令行窗口继续执行。"""
         git_exe = (getattr(self, "git_exe", None)
@@ -749,11 +627,8 @@ class InstallerApp:
             self.root.after(0, self.unlock_ui)
             return
         self.log("使用 Git: " + git_exe)
-        # 账号密码不再内置: 第一个真正需要克隆的仓库克隆前弹出对话框,
-        # 由使用者手动输入;点「取消」则保持手动模式由 Git 登录窗口输入。
-        git_user, git_password = None, None
-        use_creds = False
-        asked = False
+        # 账号密码不由本工具收集: 需要认证时由 Git 弹出登录窗口
+        self.log("克隆需要认证时,请在弹出的 Git 登录窗口中输入账号密码。")
         results = []
         for url in checked_repo_urls:
             name = repo_name(url)
@@ -772,20 +647,6 @@ class InstallerApp:
                 self.progress["value"] = self.progress["value"] + 1
                 continue
 
-            if not asked:
-                # 只在确实要克隆时才要求输入账号密码(全部已存在则无需输入)
-                asked = True
-                self.log("请在弹出窗口中输入本次使用的 Git 账号密码...")
-                git_user, git_password = self.ask_credentials()
-                use_creds = bool(git_user and git_password)
-                if use_creds:
-                    self.log("已获取手动输入的 Git 账号: %s"
-                             "(密码不显示在日志中)" % git_user)
-                else:
-                    self.log("未输入账号密码,保持手动模式:"
-                             "克隆时由 Git 弹出登录窗口,请自行输入。")
-            clone_url = (embed_credentials(url, git_user, git_password)
-                         if use_creds else url)
             self.log("===== 开始克隆 %s =====" % name)
             self.set_repo_status(name, "克隆中...", "blue")
             ok = False
@@ -795,7 +656,7 @@ class InstallerApp:
                              "正在重新打开命令行重试..." % (name, attempt))
                     self.cleanup_clone_dir(target)
                 ok = self.clone_repo(
-                    git_exe, clone_url, url, target, name, use_creds,
+                    git_exe, url, target, name,
                     final_attempt=(attempt == RETRY_TIMES))
                 if ok:
                     break
@@ -814,12 +675,8 @@ class InstallerApp:
 
             self.log("%s 重试 %d 次后仍克隆失败,"
                      "请查看 PowerShell 窗口中的报错。" % (name, RETRY_TIMES))
-            if use_creds:
-                self.log("若为认证失败,请检查本次输入的 Git 账号密码是否正确、"
-                         "是否有该仓库的访问权限。")
-            else:
-                self.log("若为认证失败,请重新运行本工具并在弹窗中"
-                         "输入正确的 Git 账号密码。")
+            self.log("若为认证失败,请在 Git 登录窗口中确认账号密码是否正确、"
+                     "是否有该仓库的访问权限,再重新运行本工具重试。")
             self.set_repo_status(name, "克隆失败", "red")
             results.append((name, "失败"))
             self.progress["value"] = self.progress["value"] + 1
@@ -838,8 +695,7 @@ class InstallerApp:
             self.btn.configure(text="重新执行")
         self.root.after(0, _report)
 
-    def clone_repo(self, git_exe, clone_url, url, target, name, use_creds,
-                   final_attempt=False):
+    def clone_repo(self, git_exe, url, target, name, final_attempt=False):
         """在可见的 PowerShell 窗口中执行克隆,
         以 .git 目录是否生成作为克隆成功的判据(比窗口退出码更可靠),
         成功返回 True,失败返回 False; final_attempt=True 表示最后一次
@@ -848,7 +704,7 @@ class InstallerApp:
         避免管理员权限导致 TortoiseGit 报 'not owned by current user'。"""
         self.log("git clone %s %s" % (url, target))
         script = self.build_clone_script(
-            git_exe, clone_url, target, name, use_creds, final_attempt)
+            git_exe, url, target, name, final_attempt)
         try:
             proc = subprocess.run(
                 ["powershell.exe", "-NoProfile",
@@ -887,7 +743,7 @@ class InstallerApp:
             except Exception as e:
                 self.log("清理克隆残留目录失败(将直接重试): %s" % e)
 
-    def build_clone_script(self, git_exe, url, target, name, use_creds,
+    def build_clone_script(self, git_exe, url, target, name,
                            final_attempt=False):
         """生成单个仓库的 PowerShell 克隆脚本(在可见窗口中运行):
         & '<本工具安装的 git.exe>' clone <仓库地址> <目标目录>;
@@ -895,11 +751,9 @@ class InstallerApp:
         返回码后自动关闭,无需人工按键,由工具自动清理残留并重新打开
         命令行窗口重试; 最后一次尝试失败则窗口停留等待按键,便于现场
         排查最终失败原因。"""
+        # 未收集账号密码,克隆需要认证时由 Git 自行弹出登录窗口
         cred_echo = (
-            "Write-Host '已使用手动输入的账号密码,克隆自动完成认证' "
-            "-ForegroundColor Yellow; "
-            if use_creds else
-            "Write-Host '未输入账号密码,如弹出登录窗口请输入您的 Git 账号密码' "
+            "Write-Host '如需认证,请在弹出的 Git 登录窗口中输入账号密码' "
             "-ForegroundColor Yellow; ")
         # 非最后一次尝试: 自动关闭窗口继续重试; 最后一次: 停留等待按键
         pause = (
