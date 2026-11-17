@@ -18,7 +18,7 @@ python -m PyInstaller --onefile --noconsole --uac-admin --noconfirm --name 一�
     --add-data "Git-2.54.0-64-bit.exe;." ^
     --add-data "TortoiseGit-2.18.0.1-64bit.msi;." ^
     --add-data "VC_redist.x64.exe;." ^
-    --add-data "LingeeSetup_ia32_1.0.0_2608241831.exe;." ^
+    --add-data "LingeeSetup_ia32_1.10.2_2611121930.exe;." ^
     一键安装工具.py
 if errorlevel 1 goto :fail
 
